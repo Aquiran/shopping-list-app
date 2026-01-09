@@ -173,7 +173,14 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+        // Supabase 클라이언트 초기화
+        const SUPABASE_URL = 'https://zyshcuysltrsothmolwk.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5c2hjdXlzbHRyc290aG1vbHdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NTMyNTIsImV4cCI6MjA4MzUyOTI1Mn0.3qXzBrpCF2cK_bM_TaqtY2kSASi18ZcmAkuU5NZ5YxA';
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
         const itemInput = document.getElementById('itemInput');
         const addButton = document.getElementById('addButton');
         const shoppingList = document.getElementById('shoppingList');
@@ -182,22 +189,26 @@
 
         let items = [];
 
-        // 로컬 스토리지에서 데이터 불러오기
-        function loadItems() {
-            const savedItems = localStorage.getItem('shoppingList');
-            if (savedItems) {
-                items = JSON.parse(savedItems);
+        // Supabase에서 데이터 불러오기
+        async function loadItems() {
+            try {
+                const { data, error } = await supabase
+                    .from('shopping_items')
+                    .select('*')
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+
+                items = data || [];
                 renderList();
+            } catch (error) {
+                console.error('데이터 로드 오류:', error);
+                alert('데이터를 불러오는 중 오류가 발생했습니다.');
             }
         }
 
-        // 로컬 스토리지에 데이터 저장
-        function saveItems() {
-            localStorage.setItem('shoppingList', JSON.stringify(items));
-        }
-
         // 아이템 추가
-        function addItem() {
+        async function addItem() {
             const text = itemInput.value.trim();
 
             if (text === '') {
@@ -205,33 +216,60 @@
                 return;
             }
 
-            const newItem = {
-                id: Date.now(),
-                text: text,
-                checked: false
-            };
+            try {
+                const { data, error } = await supabase
+                    .from('shopping_items')
+                    .insert([{ text: text, checked: false }])
+                    .select();
 
-            items.push(newItem);
-            saveItems();
-            renderList();
-            itemInput.value = '';
-            itemInput.focus();
+                if (error) throw error;
+
+                items.push(data[0]);
+                renderList();
+                itemInput.value = '';
+                itemInput.focus();
+            } catch (error) {
+                console.error('아이템 추가 오류:', error);
+                alert('아이템을 추가하는 중 오류가 발생했습니다.');
+            }
         }
 
         // 아이템 삭제
-        function deleteItem(id) {
-            items = items.filter(item => item.id !== id);
-            saveItems();
-            renderList();
+        async function deleteItem(id) {
+            try {
+                const { error } = await supabase
+                    .from('shopping_items')
+                    .delete()
+                    .eq('id', id);
+
+                if (error) throw error;
+
+                items = items.filter(item => item.id !== id);
+                renderList();
+            } catch (error) {
+                console.error('아이템 삭제 오류:', error);
+                alert('아이템을 삭제하는 중 오류가 발생했습니다.');
+            }
         }
 
         // 아이템 체크/언체크
-        function toggleItem(id) {
+        async function toggleItem(id) {
             const item = items.find(item => item.id === id);
-            if (item) {
+            if (!item) return;
+
+            try {
+                const { error } = await supabase
+                    .from('shopping_items')
+                    .update({ checked: !item.checked })
+                    .eq('id', id);
+
+                if (error) throw error;
+
                 item.checked = !item.checked;
-                saveItems();
                 renderList();
+            } catch (error) {
+                console.error('아이템 업데이트 오류:', error);
+                alert('아이템을 업데이트하는 중 오류가 발생했습니다.');
             }
         }
 
@@ -255,16 +293,20 @@
                             type="checkbox"
                             class="checkbox"
                             ${item.checked ? 'checked' : ''}
-                            onchange="toggleItem(${item.id})"
+                            onchange="window.toggleItem(${item.id})"
                         >
                         <span class="item-text">${item.text}</span>
-                        <button class="delete-button" onclick="deleteItem(${item.id})">삭제</button>
+                        <button class="delete-button" onclick="window.deleteItem(${item.id})">삭제</button>
                     </li>
                 `).join('');
             }
 
             updateStats();
         }
+
+        // 전역 함수로 등록 (인라인 이벤트 핸들러를 위해)
+        window.deleteItem = deleteItem;
+        window.toggleItem = toggleItem;
 
         // 이벤트 리스너
         addButton.addEventListener('click', addItem);
